@@ -1,0 +1,88 @@
+# go-docs-mirror-md / .pre-commit-config.yaml
+# Run: pipx install pre-commit && pre-commit install
+# Update hooks later: pre-commit autoupdate
+
+repos:
+  # Core hygiene
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+
+  # Shell formatting
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.12.0-2
+    hooks:
+      - id: shfmt
+        args: ["-i", "2", "-ci", "-sr"]   # 2-space indent, indent switch cases, simplify redirects
+        files: ^(go-docs-sync\.sh|.*\.sh)$
+
+  # Shell linting (ShellCheck via Python wheels; no system install needed)
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+        name: shellcheck (bash)
+        files: ^(go-docs-sync\.sh|.*\.sh)$
+        args:
+          - "-x"                 # follow sourced files
+          - "-S"
+          - "style"
+          - "--exclude=SC2016"   # we intentionally use single-quoted templates in xargs blocks
+
+  # Markdown lint (requires Node; if you don't want Node, remove this block)
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.45.0
+    hooks:
+      - id: markdownlint
+        files: \.md$
+        args: ["--ignore", "site-md/blog/src/**"]  # skip raw .article mirrors
+
+  # Spelling (common typos)
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+        additional_dependencies: []
+        args:
+          - "--ignore-words-list=te,crate"   # tweak as needed
+        exclude: >
+          (?x)
+          (^_site_src/)|(^site-md/)|(^release-notes/)  # generated content
+
+  # Local hooks
+  - repo: local
+    hooks:
+      # Make sure our key files carry the AGPL SPDX header
+      - id: spdx-agpl-header
+        name: ensure SPDX AGPL header
+        language: system
+        pass_filenames: true
+        entry: |
+          bash -c '
+          ret=0
+          for f in "$@"; do
+            case "$f" in
+              *.md|Makefile|go-docs-sync.sh) ;;
+              *) continue;;
+            esac
+            grep -Iq . "$f" || continue
+            grep -q "SPDX-License-Identifier: AGPL-3.0-or-later" "$f" || {
+              echo "Missing SPDX header: $f"
+              ret=1
+            }
+          done
+          exit $ret
+          '
+        files: ^(go-docs-sync\.sh|Makefile|.*\.md)$
+      # Cheap syntax check for the script
+      - id: bash-syntax
+        name: bash -n (syntax check)
+        language: system
+        files: ^go-docs-sync\.sh$
+        entry: bash -n go-docs-sync.sh
